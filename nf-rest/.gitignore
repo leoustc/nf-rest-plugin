@@ -1,8 +1,90 @@
-# Ignore Gradle project-specific cache directory
-.gradle
-.idea
-.nextflow*
+# ---------------------------------------------------------
+# Gradle / Java build artifacts
+# ---------------------------------------------------------
+.gradle/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
 
-# Ignore Gradle build output directory
+# IDE & tooling metadata
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+*.classpath
+*.project
+.settings/
+
+# ---------------------------------------------------------
+# Nextflow pipeline artifacts
+# ---------------------------------------------------------
+# Nextflow work directory (huge, auto-generated)
+work/
+
+# Nextflow internal runtime state
+.nextflow/
+.nextflow-prod/
+.nextflow.log
+.nextflow-prod.log
+.nextflow.log.*
+.nxf/
+
+# Nextflow profiles' cache dirs if manually defined
+.cache/
+.cache-nextflow/
+
+# Nextflow reports / timeline / trace / dag
+report.html
+timeline.html
+trace.txt
+dag.png
+dag.svg
+
+# Tower secrets
+tower.yml
+tower.json
+
+# ---------------------------------------------------------
+# Pipeline results (optional)
+# Remove if you want results in git
+# ---------------------------------------------------------
+s3data/
+results/
+sharedata/
+nf-server/mysql-data/
+output/
+publish/
+data/output/
+
+# ---------------------------------------------------------
+# Python cache / virtualenvs
+# ---------------------------------------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ---------------------------------------------------------
+# Conda (if used for process environments)
+# ---------------------------------------------------------
+conda/
+
+# OCI key and configuration file
+.oci
+
+# Local configuration & temp
+.env
+tmp/
+!.env.sample
+
+
+.gradle
+
 build
-work

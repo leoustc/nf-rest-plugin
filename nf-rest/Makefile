@@ -1,4 +1,8 @@
 # Build the plugin
+.PHONY: all assemble install clean
+
+all:	clean assemble install
+
 assemble:
 	./gradlew assemble
 

@@ -33,8 +33,9 @@ process A {
 process B {
     cpus 2
     memory '4 GB'
+    accelerator 1, type: 'VM.GPU.A10.1'
 
-    tag "B-${x}"
+    tag "B-GPU-${x}"
     publishDir params.outdir, mode: 'copy'
 
     input:
@@ -74,7 +75,7 @@ process C {
 // D: independent, long‑running
 process D {
     cpus 2
-    memory '8 GB'
+    memory '6 GB'
 
     tag "D-${x}"
     publishDir params.outdir, mode: 'copy'
@@ -94,8 +95,8 @@ process D {
 
 // E: final aggregation from C (A -> C -> E)
 process E {
-    cpus 4
-    memory '6 GB'
+    cpus 6
+    memory '12 GB'
 
     tag "E-${from_c.baseName}"
     publishDir params.outdir, mode: 'copy'

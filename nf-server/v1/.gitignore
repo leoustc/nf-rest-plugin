@@ -1,0 +1,86 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+dist/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Testing and coverage
+.pytest_cache/
+.cache/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+htmlcov/
+.hypothesis/
+.pytype/
+.tox/
+.nox/
+
+# Type checking / tooling
+.mypy_cache/
+.pyre/
+.pyrightcache/
+.ruff_cache/
+.dmypy.json
+dmypy.json
+pip-wheel-metadata/
+
+# Notebook checkpoints
+.ipynb_checkpoints
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*.tmp
+.project
+.pydevproject
+.DS_Store
+Thumbs.db
+
+# Logs and installers
+*.log
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Environment / secrets
+.env
+.env.local
+.env.production
+.env.development
+.env.test
+
+# Local data
+tmp/
+mysql-data/
+.oci/

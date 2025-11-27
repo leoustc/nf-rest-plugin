@@ -185,15 +185,21 @@ class RestTaskHandler extends TaskHandler {
         final Long diskGiga = disk ? disk.toGiga() : null
 
         final AcceleratorResource accelerator = cfg?.getAccelerator()
-        final Integer gpu = accelerator?.getRequest()
-        final String gpuShape = accelerator?.getType()
+        final Integer acceleratorCount = accelerator?.getRequest()
+        final String acceleratorType = accelerator?.getType()
 
         final Map<String, Object> resources = new LinkedHashMap<>()
+
         resources.put('cpu', cpu)
         resources.put('ram', ramBytes)
         resources.put('disk', diskGiga)
-        resources.put('gpu', gpu)
-        resources.put('shape', gpuShape)
+
+        if (acceleratorCount == null) {
+            resources.put('accelerator', 0)
+        } else {
+            resources.put('accelerator', acceleratorCount)
+        }
+        resources.put('shape', acceleratorType)
 
         return resources
     }
