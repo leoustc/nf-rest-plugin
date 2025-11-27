@@ -1,0 +1,32 @@
+workDir = 's3://your-workdir'
+
+aws {
+    region    = 'us-east-1'
+    accessKey = 'your-name'
+    secretKey = 'your-key'
+    user_param = 'your-bucket'
+    client {
+        endpoint          = 'https://s3-compatible-url'
+        s3PathStyleAccess = true
+    }
+}
+
+plugins {
+    id 'nf-rest@0.7.0'
+    id 'nf-amazon@3.4.1'
+}
+
+process {
+    executor = 'rest'
+}
+
+rest {
+    endpoint = 'http://localhost:7011'
+    api_key  = 'api-secret-token'
+}
+
+executor {
+    rest {
+        pollInterval = '20 sec'
+    }
+}

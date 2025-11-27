@@ -1,0 +1,16 @@
+plugins {
+    id 'io.nextflow.nextflow-plugin' version '1.0.0-beta.10'
+}
+
+version = '0.7.0'
+
+nextflowPlugin {
+    nextflowVersion = '24.10.0'
+
+    provider = 'leoustc'
+    className = 'nf.res.executor.RestExecutorPlugin'
+    extensionPoints = [
+        'nf.res.executor.RestExecutor'
+    ]
+
+}

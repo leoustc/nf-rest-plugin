@@ -1,0 +1,5 @@
+null
+.nextflow
+.DS_Store
+.params**.json
+rest.config
