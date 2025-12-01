@@ -1,40 +1,36 @@
 nextflow.enable.dsl=2
 
 // ------------------
-// Parameters (pipeline defaults)
-// ------------------
-params.samples = params.samples ?: ['one', 'two', 'three']
-params.outdir  = params.outdir  ?: 's3://nf-data/results'
-
-// ------------------
 // Processes
 // ------------------
 
-// A: simple preparation step
+// A: start from file input
 process A {
     cpus 1
     memory '1 GB'
 
-    tag "${x}"
+    tag "${sample.baseName}"
 
     input:
-    val x
+    path sample
 
     output:
-    path "a_${x}.txt"
+    path "*.txt"
 
     script:
     """
-    echo "A got: ${x}" > a_${x}.txt
+    in_file=\$(basename "${sample}")
+    echo "A got: \${in_file}" > a_\${in_file}.txt
     """
 }
 
-// B: independent fan‑out
+// B: independent fan‑out (names only)
 process B {
     cpus 2
     memory '4 GB'
+    accelerator 1, type: 'VM.GPU.A10.1'
 
-    tag "B-${x}"
+    tag "B-GPU-${x}"
     publishDir params.outdir, mode: 'copy'
 
     input:
@@ -50,7 +46,7 @@ process B {
     """
 }
 
-// C: depends on A
+// C: depends on A output
 process C {
     cpus 4
     memory '8 GB'
@@ -71,10 +67,10 @@ process C {
     """
 }
 
-// D: independent, long‑running
+// D: independent, long‑running (names only)
 process D {
     cpus 2
-    memory '8 GB'
+    memory '6 GB'
 
     tag "D-${x}"
     publishDir params.outdir, mode: 'copy'
@@ -94,8 +90,8 @@ process D {
 
 // E: final aggregation from C (A -> C -> E)
 process E {
-    cpus 4
-    memory '6 GB'
+    cpus 6
+    memory '12 GB'
 
     tag "E-${from_c.baseName}"
     publishDir params.outdir, mode: 'copy'
@@ -119,13 +115,16 @@ process E {
 // ------------------
 workflow {
     Channel
-        .fromList(params.samples)
-        .set { ch_samples }
+        .fromPath(params.input)
+        .set { ch_files }
+
+    // Derive simple names for branches B and D
+    ch_names = ch_files.map { it.baseName }
 
     // Fan‑out branches
-    ch_a_out = A(ch_samples)
-    ch_b_out = B(ch_samples)
-    ch_d_out = D(ch_samples)
+    ch_a_out = A(ch_files)
+    ch_b_out = B(ch_names)
+    ch_d_out = D(ch_names)
 
     // Chained branch A -> C -> E
     ch_c_out = C(ch_a_out)

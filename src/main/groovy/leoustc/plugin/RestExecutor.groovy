@@ -1,4 +1,4 @@
-package nf.res.executor
+package leoustc.plugin
 import nextflow.executor.Executor
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskMonitor
@@ -12,6 +12,9 @@ import org.slf4j.LoggerFactory
 
 import java.net.URI
 import java.net.http.HttpClient
+import java.util.ArrayList
+import java.util.Collection
+import java.util.Collections
 @ServiceName('rest')
 @Extension
 class RestExecutor extends Executor {
@@ -25,11 +28,12 @@ class RestExecutor extends Executor {
     private final HttpClient httpClient
     private final URI serviceUri
     private final String apiKey
+    private volatile URI resolvedServiceUri
+    private final Duration defaultPollInterval = Duration.of('2 sec')
 
     RestExecutor() {
         this.serviceUri = URI.create(DEFAULT_ENDPOINT)
         this.apiKey = null
-        log.info("RestExecutor initialised with default endpoint={}", DEFAULT_ENDPOINT)
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(java.time.Duration.ofSeconds(5))
                 .version(HttpClient.Version.HTTP_1_1)
@@ -38,7 +42,7 @@ class RestExecutor extends Executor {
 
     @Override
     protected TaskMonitor createTaskMonitor() {
-        final Duration pollDuration = getConfig()?.getPollInterval(getName(), Duration.of('2 sec')) ?: Duration.of('2 sec')
+        final Duration pollDuration = restPollDuration()
         return TaskPollingMonitor.create(getSession(), getConfig(), getName(), pollDuration)
     }
 
@@ -64,7 +68,7 @@ class RestExecutor extends Executor {
     }
 
     java.time.Duration statusPollPeriod() {
-        final Duration pollDuration = getConfig()?.getPollInterval(getName(), Duration.of('2 sec')) ?: Duration.of('2 sec')
+        final Duration pollDuration = restPollDuration()
         return java.time.Duration.ofMillis(pollDuration.toMillis())
     }
 
@@ -112,7 +116,77 @@ class RestExecutor extends Executor {
         return outdir != null ? outdir.toString() : null
     }
 
-    URI getServiceUri() {
+    List<String> getParamInputs() {
+        final Map<String,Object> cfg = getSessionConfig()
+        if( cfg == null )
+            return Collections.emptyList()
+        final Object paramsObj = cfg.get('params')
+        if( !(paramsObj instanceof Map) )
+            return Collections.emptyList()
+        final Map<?,?> params = (Map<?,?>) paramsObj
+        final Object inputObj = params.get('input')
+        if( inputObj == null )
+            return Collections.emptyList()
+
+        final List<String> result = new ArrayList<>()
+        if( inputObj instanceof Collection ) {
+            for( Object value : (Collection<?>) inputObj ) {
+                if( value != null ) {
+                    result.add(value.toString())
+                }
+            }
+        }
+        else {
+            result.add(inputObj.toString())
+        }
+
+        return result
+    }
+
+    Duration getRestPollInterval() {
+        return restPollDuration()
+    }
+
+    private Duration restPollDuration() {
+        final Duration restConfig = readRestPollIntervalFromConfig()
+        if (restConfig != null) {
+            return restConfig
+        }
+        return getConfig()?.getPollInterval(getName(), defaultPollInterval) ?: defaultPollInterval
+    }
+
+    private Duration readRestPollIntervalFromConfig() {
+        try {
+            final Object cfgRoot = getSession()?.getConfig()
+            if (cfgRoot instanceof Map) {
+                final Map<?,?> root = (Map<?,?>) cfgRoot
+                final Object restCfg = root.get('rest')
+                if (restCfg instanceof Map) {
+                    final Object value = ((Map<?,?>)restCfg).get('pollInterval')
+                    if (value instanceof Duration) {
+                        return (Duration) value
+                    }
+                    if (value instanceof CharSequence) {
+                        try {
+                            return Duration.of(value.toString())
+                        }
+                        catch (Exception ignored) {
+                            // ignore invalid format
+                        }
+                    }
+                    if (value instanceof Number) {
+                        return Duration.ofMillis(((Number)value).longValue())
+                    }
+                }
+            }
+        }
+        catch (Throwable ignored) {
+            // fall back to defaults below
+        }
+        return null
+    }
+
+    private URI computeServiceUri() {
         // Prefer top-level `rest { endpoint = ... }` config
         String configured = null
         try {
@@ -130,12 +204,20 @@ class RestExecutor extends Executor {
         }
 
         if (configured) {
-            // log.info("RestExecutor using configured endpoint from 'rest { endpoint = ... }': {}", configured)
             return URI.create(configured)
         }
-
-        log.info("RestExecutor using default endpoint={}", serviceUri)
         return serviceUri
+    }
+
+    URI getServiceUri() {
+        if (resolvedServiceUri == null) {
+            synchronized (this) {
+                if (resolvedServiceUri == null) {
+                    resolvedServiceUri = computeServiceUri()
+                }
+            }
+        }
+        return resolvedServiceUri
     }
 
     String getApiKey() {

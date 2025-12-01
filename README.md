@@ -1,6 +1,10 @@
-# nf-rest on OCI – Cloud-Native Nextflow Remote Executor
+# nf-rest plugin
 
-Remote executor stack for [Nextflow](https://www.nextflow.io/) that routes tasks to a REST gateway, provisions compute on demand (Terraform/Ansible), and tears it down after completion. The reference implementation targets Oracle Cloud Infrastructure (OCI) but the pattern is provider-neutral anywhere Terraform and S3-compatible storage are available.
+Nextflow executor plugin that sends each task as a JSON payload to the `nf-server` REST gateway, implementing the `rest` executor.
+
+[nf-server repository](https://github.com/leoustc/nf-server)
+
+`nf-server` is a gateway/proxy service that receives tasks from this plugin, queues them, and dispatches them to worker proxies that provision and monitor runs (OCI/Kubernetes). Proxies share a workdir (`/opt/bot`) and can run in different compartments/subnets; the gateway exposes the REST API your Nextflow jobs talk to.
 
 <p align="center">
   <img src="nf-rest.jpg" alt="nf-rest architecture" width="200" height="200" />
@@ -12,29 +16,60 @@ Remote executor stack for [Nextflow](https://www.nextflow.io/) that routes tasks
   </a>
 </p>
 
-## Repo layout
-- `nf-server/` – REST gateway + Docker Compose deployment. See `nf-server/README.md` for prerequisites, env vars, and run instructions.
-- `nf-rest/` – Nextflow executor plugin (`rest` executor) plus example configs/pipelines. See `nf-rest/README.md` for build, install, and usage.
+## Environment
 
-## Problem to solve
-- Managed batch executors tie pipelines to a single cloud and bury config in provider-specific knobs.
-- Operational spread across multiple services makes debugging and cost control harder.
-- Hybrid and multi-cloud runs require different executors and operational models.
-- Governance and quotas are fragmented when execution is bound to each provider.
+From the repository root:
 
-## Design philosophy
-- Vendor-neutral pattern: any Terraform target plus S3-compatible storage; OCI is the reference.
-- Open tooling: Terraform for lifecycle, Ansible for provisioning/run control, systemd for robustness, S3 APIs for data sync.
-- Dynamic, pay-as-you-go compute: shape, CPU, memory, disk, and accelerator hints flow from Nextflow to the gateway; workers are created and torn down automatically.
-- Central REST gateway enables multi-tenant access, policy enforcement, and cost visibility.
+```bash
+bash bootstrap.sh     # create the nf-gradle-env Conda environment
+source environment    # activate it (conda activate nf-gradle-env)
+```
 
-## Quick start
-- **Run the gateway:** `cd nf-server && cp env.sample .env && docker compose up -d --build` (details in `nf-server/README.md`).
-- **Build/install plugin:** `cd nf-rest && make assemble install` (bootstrap helper available; see `nf-rest/README.md`).
-- **Try sample pipelines:** `cd nf-rest/test && cp rest.config.sample rest.config && make prod` or run `main.nf`/`dev.nf` directly with `-c rest.config`.
+Run all build and Nextflow commands inside this environment.
 
-## License
-Apache 2.0 (`LICENSE`; mirrored in `nf-rest/LICENSE` and `nf-server/LICENSE`).
+## Building and installing
 
-## Disclaimer
-The resources, scripts, and guidance in this repository are furnished “as is” for informational purposes only. Oracle makes no warranties, express or implied, regarding the content, including warranties of merchantability, fitness for a particular purpose, title, or non-infringement. Use is at your sole risk. Oracle and its affiliates are not liable for any damages arising from or related to use of these resources. These resources are not official product patches or updates and are not supported under Oracle’s standard support services. Oracle may modify or withdraw them at any time and has no obligation to maintain or update them. You are responsible for evaluating appropriateness and for taking adequate backups and other precautions to protect your systems and data.
+From this directory (`nf-rest`), with the environment active:
+
+```bash
+make assemble
+make install
+```
+
+This builds the plugin JAR and installs it into `~/.nextflow/plugins/nf-rest-<version>` (version comes from the `version` file).
+
+## Using in Nextflow
+
+In your `nextflow.config` or a profile config:
+
+```groovy
+plugins {
+    id 'nf-rest@0.9.0'
+}
+
+process {
+    executor = 'rest'
+}
+
+rest {
+    endpoint = 'http://localhost:7011'
+    api_key  = 'api-secret-token'
+}
+```
+
+Ensure `nf-server` is running and reachable at the configured `endpoint` before starting your pipeline.
+
+## Sample workflows (under `test/`)
+- `main.nf` – primary demo pipeline (fan-out/fan-in).
+- `dev.nf` – lighter development run.
+- `rest.config.sample` – template config; copy to `rest.config` and fill S3/endpoint values.
+- `Makefile` – `make prod` runs `main.nf` with `rest.config`.
+
+Quick run:
+```bash
+cd nf-rest/test
+cp rest.config.sample rest.config   # edit with your endpoint/bucket/api key
+make prod                           # or: nextflow run main.nf -c rest.config
+```
+
+Prereqs: Nextflow installed, nf-rest plugin built/installed (`make assemble install`), and the nf-server gateway running (see `nf-server/README.md`).

@@ -1,0 +1,8 @@
+# Changelog
+
+## [0.9.0] - 2024-12-01
+### Added
+- Accelerator-aware executor support.
+- REST metadata now includes per-task inputs and task-level input type.
+- S3 input staging and publish-dir syncing improvements in sample workflows.
+- Verified Nextflow support: 25.10.2.10555.

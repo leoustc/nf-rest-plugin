@@ -1,4 +1,4 @@
-package nf.res.executor
+package leoustc.plugin
 
 import groovy.transform.CompileStatic
 import nextflow.plugin.BasePlugin

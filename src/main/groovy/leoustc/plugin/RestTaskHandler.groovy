@@ -1,18 +1,21 @@
-package nf.res.executor
+package leoustc.plugin
 
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 import nextflow.executor.BashWrapperBuilder
+import nextflow.executor.res.AcceleratorResource
+import nextflow.file.FileHolder
+import nextflow.processor.PublishDir
+import nextflow.processor.TaskConfig
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskRun
 import nextflow.processor.TaskStatus
-import nextflow.processor.TaskConfig
-import nextflow.processor.PublishDir
+import nextflow.util.Duration as NxfDuration
 import nextflow.util.MemoryUnit
-import nextflow.executor.res.AcceleratorResource
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
+import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
@@ -22,7 +25,9 @@ import java.time.Duration
 import java.time.Instant
 import java.util.ArrayList
 import java.util.Collection
+import java.util.LinkedHashSet
 import java.util.List
+import java.util.Map
 import java.util.Collections
 class RestTaskHandler extends TaskHandler {
 
@@ -53,6 +58,15 @@ class RestTaskHandler extends TaskHandler {
         // original workdir as seen by Nextflow (may be s3://...)
         final String originalWorkPath = workDir.toString()
 
+        final URI serviceUri = executor.getServiceUri()
+        final NxfDuration pollInterval = executor.getRestPollInterval()
+        log.info(
+                '[submit] RestExecutor service URI={} workdir={} pollInterval={}',
+                serviceUri,
+                originalWorkPath,
+                pollInterval
+        )
+
         final String workPath = originalWorkPath
 
         final Map<String, ?> payload = [
@@ -65,7 +79,9 @@ class RestTaskHandler extends TaskHandler {
         ]
 
         final String json = JsonOutput.toJson(payload)
-        // log.info('REST executor POST payload: {}', json)
+        if( log.isDebugEnabled() ) {
+            log.debug('REST executor POST payload: {}', json)
+        }
         final byte[] jsonBytes = json.getBytes(StandardCharsets.UTF_8)
         final HttpRequest request = newRequestBuilder(executor.jobsUri())
                 .header('Content-Type', 'application/json')
@@ -177,23 +193,27 @@ class RestTaskHandler extends TaskHandler {
     private Map<String, Object> collectResources() {
         final TaskConfig cfg = getTask()?.getConfig()
         final Integer cpu = (cfg?.getCpus() instanceof Number) ? ((Number) cfg.getCpus()).intValue() : null
-
         final MemoryUnit mem = cfg?.getMemory()
-        final Long ramBytes = mem ? mem.toBytes() : null
-
+        final Long ramGiga = mem ? mem.toGiga() : null
         final MemoryUnit disk = cfg?.getDisk()
         final Long diskGiga = disk ? disk.toGiga() : null
 
         final AcceleratorResource accelerator = cfg?.getAccelerator()
-        final Integer gpu = accelerator?.getRequest()
-        final String gpuShape = accelerator?.getType()
+        final Integer acceleratorCount = accelerator?.getRequest()
+        final String acceleratorType = accelerator?.getType()
 
         final Map<String, Object> resources = new LinkedHashMap<>()
+
         resources.put('cpu', cpu)
-        resources.put('ram', ramBytes)
+        resources.put('ram', ramGiga)
         resources.put('disk', diskGiga)
-        resources.put('gpu', gpu)
-        resources.put('shape', gpuShape)
+
+        if (acceleratorCount == null) {
+            resources.put('accelerator', 0)
+        } else {
+            resources.put('accelerator', acceleratorCount)
+        }
+        resources.put('shape', acceleratorType)
 
         return resources
     }
@@ -207,17 +227,14 @@ class RestTaskHandler extends TaskHandler {
         if( originalWorkPath != null ) {
             meta.put('originalWorkdir', originalWorkPath)
         }
-
         final String sessionWorkDir = executor.getSessionWorkDir()
         if( sessionWorkDir ) {
             meta.put('sessionWorkDir', sessionWorkDir)
         }
-
         final String outputDir = executor.getSessionOutputDir()
         if( outputDir ) {
             meta.put('sessionOutputDir', outputDir)
         }
-
         final String bucketDir = executor.getSessionBucketDir()
         if( bucketDir ) {
             meta.put('sessionBucketDir', bucketDir)
@@ -231,6 +248,19 @@ class RestTaskHandler extends TaskHandler {
         final String outdir = executor.getParamOutdir()
         if( outdir ) {
             meta.put('paramsOutdir', outdir)
+        }
+
+        final Map<String,String> taskInput = findTaskInputWithType()
+        if( taskInput?.get('value') ) {
+            meta.put('paramsInput', Collections.singletonList(taskInput.get('value')))
+            meta.put('paramsInputType', taskInput.get('type'))
+        }
+        else {
+            final List<String> paramsInput = executor.getParamInputs()
+            if( paramsInput ) {
+                meta.put('paramsInput', Collections.singletonList(paramsInput.get(0)))
+                meta.put('paramsInputType', 'config')
+            }
         }
 
         final TaskConfig cfg = getTask()?.getConfig()
@@ -254,6 +284,62 @@ class RestTaskHandler extends TaskHandler {
         }
 
         return meta
+    }
+
+    private Map<String,String> findTaskInputWithType() {
+        final TaskRun task = getTask()
+        if( task == null )
+            return null
+
+        // Prefer staged input map for this task
+        final Map<String,Path> inputMap = task.getInputFilesMap()
+        if( inputMap != null && !inputMap.isEmpty() ) {
+            final Path first = inputMap.values().iterator().next()
+            if( first != null ) {
+                return [value: first.toString(), type: 'file']
+            }
+        }
+
+        final Object inputFilesObj = task.getInputFiles()
+        if( !(inputFilesObj instanceof Map) )
+            return null
+
+        final Map<?,?> inputFiles = (Map<?,?>) inputFilesObj
+        if( inputFiles.isEmpty() )
+            return null
+
+        for( Object value : inputFiles.values() ) {
+            final String found = findInputSource(value)
+            if( found ) {
+                return [value: found, type: 'file']
+            }
+        }
+        return null
+    }
+
+    private String findInputSource(final Object value) {
+        if( value == null )
+            return null
+        if( value instanceof FileHolder ) {
+            final FileHolder holder = (FileHolder) value
+            final Object source = holder.getSourceObj()
+            if( source != null ) {
+                return source.toString()
+            }
+            final Path store = holder.getStorePath()
+            if( store != null ) {
+                return store.toString()
+            }
+            return null
+        }
+        if( value instanceof Collection ) {
+            for( Object item : (Collection<?>) value ) {
+                final String found = findInputSource(item)
+                if( found )
+                    return found
+            }
+        }
+        return null
     }
 
     private Map<String, Object> buildStorageConfig(final String originalWorkPath) {
