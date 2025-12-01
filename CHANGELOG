@@ -6,3 +6,4 @@
 - REST metadata now includes per-task inputs and task-level input type.
 - S3 input staging and publish-dir syncing improvements in sample workflows.
 - Verified Nextflow support: 25.10.2.10555.
+- Docs: expanded accelerator guidance, including multi-accelerator scaling and RDMA (preview).

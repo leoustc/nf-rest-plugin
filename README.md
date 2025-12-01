@@ -59,6 +59,41 @@ rest {
 
 Ensure `nf-server` is running and reachable at the configured `endpoint` before starting your pipeline.
 
+## Accelerators
+Declare accelerators in your processes to drive shape selection by the gateway/proxy:
+
+```groovy
+process B {
+    cpus 2
+    memory '4 GB'
+    accelerator 1, type: 'VM.GPU.A10.1'   // GPU shape
+    publishDir params.outdir, mode: 'copy'
+    input:
+    val x
+    output:
+    path "b_${x}.txt"
+    script:
+    """
+    echo "B got: ${x}" > b_${x}.txt
+    """
+}
+```
+
+- `accelerator <count>, type: '<shape>'` mirrors Nextflow’s accelerator directive.
+- Use GPU shapes (e.g., `VM.GPU.A10.1`) or CPU shapes (e.g., `VM.Standard.E5.Flex`), and bare-metal shapes (`BM.*`) for larger workloads; the proxy picks the matching OCI/K8s runner.
+- `accelerator` count can be greater than 1 (e.g., 2 or 3) to request multiple accelerators; the runner pool will scale accordingly, and multi-accelerator nodes can form a Slurm cluster for process-level parallelism when needed.
+- The sample pipelines (`test/dev.nf`, `test/main.nf`) include both CPU and GPU examples.
+
+## Scaled Accelerators [Preview]
+- Requests like `accelerator 2, type: 'VM.GPU.A10.1'` ask for multiple accelerators; the scheduler places the task on a node with at least that many devices or on a small cluster if it needs to spread (for BM shapes, it provisions bare metal).
+- For CPU-only scaling, you can combine higher `accelerator` counts with BM CPU shapes (e.g., `BM.Standard.E4.128`) to get large single-node capacity.
+- Multi-accelerator requests can be backed by a transient Slurm cluster sized to the count, so the process can fan out internally while remaining a single Nextflow task.
+- Keep `publishDir`/S3 staging enabled so outputs and logs are collected when the multi-accelerator run completes.
+
+## Scaled Accelerators with RDMA [Coming soon]
+- If the requested shape supports RDMA, nf-server will bring up an RDMA-enabled cluster for maximum throughput (see OCI HPC shapes: https://docs.oracle.com/en-us/iaas/Content/Compute/References/high-performance-compute.htm); otherwise a TCP/IP Slurm cluster is built.
+- Slurm is provisioned on demand for the task and destroyed/cleaned after completion, so resources are only held while needed.
+
 ## Sample workflows (under `test/`)
 - `main.nf` – primary demo pipeline (fan-out/fan-in).
 - `dev.nf` – lighter development run.
