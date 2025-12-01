@@ -26,6 +26,7 @@ import java.time.Instant
 import java.util.ArrayList
 import java.util.Collection
 import java.util.LinkedHashSet
+import java.util.LinkedHashMap
 import java.util.List
 import java.util.Map
 import java.util.Collections
@@ -146,7 +147,7 @@ class RestTaskHandler extends TaskHandler {
         final HttpRequest request = newRequestBuilder(executor.killUri(jobId))
                 .POST(HttpRequest.BodyPublishers.noBody())
                 .build()
-        send(request)
+        send(request, true)
     }
 
     private void refreshStatus() {
@@ -163,18 +164,33 @@ class RestTaskHandler extends TaskHandler {
                 .GET()
                 .build()
 
-        this.lastStatus = send(request)
+        this.lastStatus = send(request, true)
         this.lastPoll = now
     }
 
     private Map<String, Object> send(final HttpRequest request) {
+        return send(request, false)
+    }
+
+    private Map<String, Object> send(final HttpRequest request, final boolean allowNotFound) {
         try {
             final HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString())
             final int code = response.statusCode()
+            final Map<String, Object> parsedBody = parseJsonBody(response.body())
+            if (code == 404 && allowNotFound) {
+                final Map<String, Object> missing = new LinkedHashMap<>()
+                missing.put('status', 'failed')
+                missing.put('returncode', 1)
+                final Object detail = parsedBody?.get('detail') ?: parsedBody?.get('message')
+                final String msg = detail ? detail.toString() : "Job not found (${request.uri()})"
+                missing.put('stderr', msg)
+                log.warn('REST executor {} {} returned 404: {}; treating as failed', request.method(), request.uri(), msg)
+                return missing
+            }
             if (code >= 300) {
                 throw new IllegalStateException("REST executor ${request.method()} ${request.uri()} failed with ${code}: ${response.body()}")
             }
-            return (Map<String, Object>) jsonSlurper.parseText(response.body())
+            return parsedBody
         }
         catch (InterruptedException ie) {
             Thread.currentThread().interrupt()
@@ -315,6 +331,13 @@ class RestTaskHandler extends TaskHandler {
             }
         }
         return null
+    }
+
+    private Map<String, Object> parseJsonBody(final String body) {
+        if (body == null || body.isEmpty()) {
+            return Collections.emptyMap()
+        }
+        return (Map<String, Object>) jsonSlurper.parseText(body)
     }
 
     private String findInputSource(final Object value) {
